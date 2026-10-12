@@ -122,6 +122,25 @@ export function NewAnalysis() {
       <TopBar title="New Analysis" subtitle="Select an analysis mode, an observation set, and describe what you want to know." />
       <div className="flex-1 overflow-y-auto p-8">
         <div className="mx-auto max-w-5xl space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-accent/40 bg-accent-soft/30 p-4 shadow-sm">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/20 text-accent text-xs">⇪</span>
+                <span className="text-sm font-semibold text-ink-primary">Want to analyze your own imagery?</span>
+              </div>
+              <p className="mt-1 text-xs text-ink-secondary">
+                Upload your custom satellite, aerial, or drone image directly for land-cover classification, scene understanding, or bi-temporal change detection.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              className="shrink-0 text-xs border-accent/50 text-accent hover:bg-accent-soft"
+              onClick={() => navigate('/upload-analysis')}
+            >
+              Upload Image →
+            </Button>
+          </div>
+
           <div>
             <SectionLabel className="mb-3">1 — Analysis mode</SectionLabel>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

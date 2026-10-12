@@ -101,7 +101,15 @@ def _summarize(output) -> str:
 
 
 def run_mission_pipeline(db: Session, mission: Mission) -> Mission:
-    region = REGIONS[mission.region_key]
+    region = REGIONS.get(
+        mission.region_key,
+        {
+            "label": mission.title,
+            "description": "User-uploaded observation analyzed with SatQuery AI.",
+            "bbox": [77.101, 15.602, 77.151, 15.652],
+            "modes": [mission.mode],
+        },
+    )
     logger = _StepLogger(db, mission)
 
     # ---- Stage 1: Understanding Query -------------------------------------------------

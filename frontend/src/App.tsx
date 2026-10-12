@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './layout/AppShell';
 import { Dashboard } from './features/dashboard/Dashboard';
 import { NewAnalysis } from './features/new-analysis/NewAnalysis';
+import { UploadAnalysis } from './features/upload-analysis/UploadAnalysis';
 import { Workspace } from './features/workspace/Workspace';
 import { ResultsEvidence } from './features/results-evidence/ResultsEvidence';
 import { RegionIntelligenceList } from './features/region-intelligence/RegionIntelligenceList';
@@ -21,6 +22,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/new-analysis" element={<NewAnalysis />} />
+          <Route path="/upload-analysis" element={<UploadAnalysis />} />
           <Route path="/workspace/:missionId" element={<Workspace />} />
           <Route path="/results/:missionId" element={<ResultsEvidence />} />
           <Route path="/region-intelligence" element={<RegionIntelligenceList />} />

@@ -8,6 +8,7 @@ const NAV_SECTIONS: { label: string; items: { to: string; label: string; icon: s
     items: [
       { to: '/', label: 'Dashboard', icon: '◈' },
       { to: '/new-analysis', label: 'New Analysis', icon: '✦' },
+      { to: '/upload-analysis', label: 'Upload & Analyze', icon: '⇪' },
       { to: '/missions', label: 'Mission History', icon: '☰' },
     ],
   },

@@ -12,7 +12,14 @@ from app.services.correlation import correlate_external_signal
 
 
 def build_knowledge_graph(mission: Mission, observations: list[Observation], evidence_items: list[Evidence]) -> dict:
-    region = REGIONS[mission.region_key]
+    region = REGIONS.get(
+        mission.region_key,
+        {
+            "label": mission.title,
+            "description": "User-uploaded observation analyzed with SatQuery AI.",
+            "bbox": [77.101, 15.602, 77.151, 15.652],
+        },
+    )
     nodes = []
     edges = []
 

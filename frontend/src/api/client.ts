@@ -14,9 +14,14 @@ import type {
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData;
+  const headers: Record<string, string> = {};
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json';
+  }
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -45,6 +50,12 @@ export const api = {
     request<MissionDetail>('/api/analyze', {
       method: 'POST',
       body: JSON.stringify({ mode, region_key, query_text, title }),
+    }),
+
+  uploadAndAnalyze: (formData: FormData) =>
+    request<MissionDetail>('/api/upload-and-analyze', {
+      method: 'POST',
+      body: formData,
     }),
 
   listMissions: () => request<MissionSummary[]>('/api/missions'),

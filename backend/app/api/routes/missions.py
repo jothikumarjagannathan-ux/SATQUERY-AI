@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import io
+import uuid
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.db.models import Evidence, ExecutionStep, Mission, Observation
 from app.db.session import get_db
+from app.demo_data.generate_imagery import IMG_SIZE, STATIC_DIR
 from app.demo_data.scenarios import REGIONS
 from app.orchestration.orchestrator import PipelineError, run_mission_pipeline
 from app.schemas.schemas import (
@@ -18,6 +23,7 @@ from app.schemas.schemas import (
     UnderstandQueryRequest,
     ValidateInputsRequest,
 )
+from app.services.geo_utils import bbox_polygon
 from app.services.input_validation import validate_geospatial, validate_inputs
 from app.services.knowledge_graph import build_knowledge_graph
 from app.services.query_understanding import understand_query
@@ -26,7 +32,16 @@ router = APIRouter(prefix="/api", tags=["missions"])
 
 
 def _mission_detail(db: Session, mission: Mission) -> MissionDetailOut:
-    region = REGIONS[mission.region_key]
+    region = REGIONS.get(
+        mission.region_key,
+        {
+            "key": mission.region_key,
+            "label": f"User Upload — {mission.title}",
+            "description": "User-uploaded observation analyzed via SatQuery AI pipeline.",
+            "bbox": [77.101, 15.602, 77.151, 15.652],
+            "modes": [mission.mode],
+        },
+    )
     observations = db.query(Observation).filter(Observation.region_key == mission.region_key).all()
     evidence_items = db.query(Evidence).filter(Evidence.mission_id == mission.id).all()
     steps = (
@@ -92,6 +107,116 @@ def api_analyze(req: AnalyzeRequest, db: Session = Depends(get_db)):
     db.add(mission)
     db.commit()
     db.refresh(mission)
+
+    try:
+        run_mission_pipeline(db, mission)
+    except PipelineError as exc:
+        raise HTTPException(400, str(exc))
+
+    return _mission_detail(db, mission)
+
+
+@router.post("/upload-and-analyze", response_model=MissionDetailOut)
+async def api_upload_and_analyze(
+    file: UploadFile = File(...),
+    query_text: str = Form("Describe this scene and analyze land-cover composition."),
+    title: str | None = Form(None),
+    mode: str = Form("single_image"),
+    file_after: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+):
+    STATIC_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 1. Read & process primary image
+    content = await file.read()
+    try:
+        img = Image.open(io.BytesIO(content)).convert("RGB")
+    except Exception as exc:
+        raise HTTPException(400, f"Invalid image file: {exc}")
+
+    img_resized = img.resize((IMG_SIZE, IMG_SIZE), Image.Resampling.LANCZOS)
+    filename = f"upload_{uuid.uuid4().hex[:10]}.png"
+    img_resized.save(STATIC_DIR / filename, format="PNG")
+
+    # 2. Register dynamic region for this upload
+    region_key = f"upload-region-{uuid.uuid4().hex[:8]}"
+    clean_title = (title or "").strip()
+    upload_title = clean_title if clean_title else f"Upload Analysis — {file.filename or 'Custom Image'}"
+
+    actual_mode = "bi_temporal" if file_after else "single_image"
+    if mode == "bi_temporal" and not file_after:
+        actual_mode = "single_image"
+
+    REGIONS[region_key] = {
+        "label": upload_title,
+        "description": f"User-uploaded observation ({file.filename}) analyzed via SatQuery AI pipeline.",
+        "bbox": [77.101, 15.602, 77.151, 15.652],
+        "modes": [actual_mode],
+    }
+
+    # 3. Create Mission
+    mission = Mission(
+        title=upload_title,
+        query_text=query_text.strip() or "Describe this scene and analyze land-cover composition.",
+        mode=actual_mode,
+        region_key=region_key,
+        status="running",
+        is_demo=False,
+    )
+    db.add(mission)
+    db.commit()
+    db.refresh(mission)
+
+    now = datetime.now(timezone.utc)
+    obs1 = Observation(
+        mission_id=mission.id,
+        region_key=region_key,
+        name=file.filename or "Uploaded Observation",
+        sensor_type="optical",
+        modality="multispectral (RGB)",
+        role="single" if not file_after else "before",
+        acquisition_time=now - timedelta(days=365) if file_after else now,
+        crs="EPSG:4326",
+        resolution_m=10.0,
+        bands=["Red", "Green", "Blue"],
+        footprint_geometry=bbox_polygon(REGIONS[region_key]["bbox"]),
+        preprocessing="User upload (normalized RGB)",
+        image_path=filename,
+        width=IMG_SIZE,
+        height=IMG_SIZE,
+    )
+    db.add(obs1)
+
+    if file_after:
+        content2 = await file_after.read()
+        try:
+            img2 = Image.open(io.BytesIO(content2)).convert("RGB")
+        except Exception as exc:
+            raise HTTPException(400, f"Invalid secondary image file: {exc}")
+        img2_resized = img2.resize((IMG_SIZE, IMG_SIZE), Image.Resampling.LANCZOS)
+        filename2 = f"upload_{uuid.uuid4().hex[:10]}.png"
+        img2_resized.save(STATIC_DIR / filename2, format="PNG")
+
+        obs2 = Observation(
+            mission_id=mission.id,
+            region_key=region_key,
+            name=file_after.filename or "Uploaded Observation (T2)",
+            sensor_type="optical",
+            modality="multispectral (RGB)",
+            role="after",
+            acquisition_time=now,
+            crs="EPSG:4326",
+            resolution_m=10.0,
+            bands=["Red", "Green", "Blue"],
+            footprint_geometry=bbox_polygon(REGIONS[region_key]["bbox"]),
+            preprocessing="User upload (normalized RGB)",
+            image_path=filename2,
+            width=IMG_SIZE,
+            height=IMG_SIZE,
+        )
+        db.add(obs2)
+
+    db.commit()
 
     try:
         run_mission_pipeline(db, mission)
